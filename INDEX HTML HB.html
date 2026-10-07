@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Водяной тир</title>
+<style>
+  :root {
+    --bg: #101826;
+    --panel: #1b2740;
+    --cream: #f4ead2;
+    --red: #d8342c;
+    --green: #3ecf4a;
+    --water: #4fc3ff;
+    --yellow: #ffe14d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg);
+    color: var(--cream);
+    font-family: "Courier New", "Lucida Console", Menlo, Consolas, monospace;
+    font-weight: 700;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px;
+  }
+  .wrap {
+    width: min(calc(100vw - 12px), 1000px, calc((100vh - 110px) * 16 / 9));
+    width: min(calc(100vw - 12px), 1000px, calc((100dvh - 110px) * 16 / 9));
+    min-width: 260px;
+  }
+  .hud {
+    display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 6px;
+    margin-bottom: 6px;
+  }
+  .box {
+    background: var(--panel);
+    border: 3px solid #0b1220;
+    box-shadow: inset 0 -3px 0 rgba(0,0,0,.25);
+    padding: 5px 8px;
+    line-height: 1.15;
+  }
+  .box small { display: block; font-size: 11px; letter-spacing: 1px; opacity: .7; text-transform: uppercase; }
+  .box b { font-size: 22px; font-variant-numeric: tabular-nums; }
+  #timeBox.low b { color: #ff6b5e; }
+  .bar { height: 12px; background: #0b1220; margin-top: 5px; }
+  .bar i { display: block; height: 100%; width: 100%; background: var(--water); box-shadow: inset 0 -3px 0 rgba(0,0,0,.2); }
+  .waterLine { display: flex; justify-content: space-between; align-items: baseline; }
+  .waterLine span { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 16 / 9;
+    border: 4px solid #0b1220;
+    background: #1f3a5f;
+  }
+  canvas {
+    display: block; width: 100%; height: 100%;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    touch-action: none; cursor: crosshair;
+  }
+  .hint { display: none; text-align: center; font-size: 12px; opacity: .65; margin-top: 6px; font-weight: 400; }
+  @media (orientation: portrait) and (max-width: 700px) { .hint { display: block; } }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    background: rgba(8, 13, 24, .88);
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px; overflow: auto;
+  }
+  .overlay[hidden] { display: none; }
+  .card {
+    width: min(100%, 430px); max-height: 100%; overflow: auto;
+    background: var(--panel);
+    border: 4px solid #0b1220;
+    border-top: 14px solid var(--red);
+    box-shadow: 0 8px 0 rgba(0,0,0,.35);
+    padding: 16px 18px 18px;
+  }
+  .card h1 { margin: 0 0 10px; font-size: 26px; color: var(--yellow); letter-spacing: 1px; }
+  .card ul { margin: 0 0 14px; padding-left: 18px; font-size: 14px; line-height: 1.45; font-weight: 400; }
+  .card li { margin-bottom: 4px; }
+  .card li b { color: var(--yellow); }
+  .big { font-size: 46px; color: var(--yellow); line-height: 1; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .rank { font-size: 16px; margin-bottom: 12px; color: var(--green); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-weight: 400; margin-bottom: 14px; }
+  td { padding: 3px 0; border-bottom: 1px dashed rgba(244,234,210,.2); }
+  td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  button {
+    font: inherit; font-size: 20px; color: #10240f;
+    background: var(--green); border: 3px solid #0b1220;
+    box-shadow: 0 5px 0 #1d7a27; padding: 10px 18px; width: 100%;
+    cursor: pointer; touch-action: manipulation;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 2px 0 #1d7a27; }
+  button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="box"><small>Очки</small><b id="score">0</b></div>
+    <div class="box" id="timeBox"><small>Время</small><b id="time">45</b></div>
+    <div class="box">
+      <div class="waterLine"><small>Вода</small><span id="waterTxt">30/30</span></div>
+      <div class="bar"><i id="waterBar"></i></div>
+    </div>
+  </div>
+  <div class="stage">
+    <canvas id="game" width="480" height="270"></canvas>
+  </div>
+  <div class="hint">На телефоне удобнее повернуть экран горизонтально</div>
+</div>
+
+<div class="overlay" id="startOv">
+  <div class="card">
+    <h1>ВОДЯНОЙ ТИР</h1>
+    <ul>
+      <li>Наводи мышью или пальцем. Клик или касание — выстрел, можно удерживать.</li>
+      <li>Струя летит по дуге и падает — целься выше мишени.</li>
+      <li>Нижние мишени — <b>0,5</b>, средние — <b>1</b>, верхняя (маленькая и ездит) — <b>3</b>.</li>
+      <li>Сбитая мишень встаёт снова через 2,5 секунды.</li>
+      <li>У тебя <b>45 секунд</b> и <b>30 зарядов</b> воды. Кончится что-то одно — раунд окончен.</li>
+    </ul>
+    <button id="startBtn" type="button">Играть</button>
+  </div>
+</div>
+
+<div class="overlay" id="endOv" hidden>
+  <div class="card">
+    <h1 id="endTitle">Время вышло!</h1>
+    <div class="big" id="endScore">0</div>
+    <div class="rank" id="endRank"></div>
+    <table>
+      <tr><td>Верхняя (×3)</td><td id="hTop">0</td></tr>
+      <tr><td>Средние (×1)</td><td id="hMid">0</td></tr>
+      <tr><td>Нижние (×0,5)</td><td id="hBot">0</td></tr>
+      <tr><td>Точность</td><td id="acc">0%</td></tr>
+      <tr><td>Рекорд</td><td id="best">0</td></tr>
+    </table>
+    <button id="againBtn" type="button">Заново</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- настройки ----------
+  var W = 480, H = 270;
+  var ROUND_TIME = 45;      // секунд
+  var WATER_MAX = 30;       // зарядов
+  var FIRE_DELAY = 0.28;    // пауза между выстрелами
+  var SPEED = 430;          // скорость струи, px/с
+  var GRAV = 300;           // падение струи, px/с²
+  var RESPAWN = 2.5;        // через сколько встаёт мишень
+  var GROUND_Y = 238;
+  var PIVOT = { x: 84, y: 151 };            // плечо
+  var MUZZLE = { x: 46, y: -5.5 };          // дуло в координатах руки
+  var AIM_MIN = -1.25, AIM_MAX = 0.4;       // пределы наклона
+  var BEST_KEY = 'vodyanoy_tir_best';
+
+  // ряды: pts2 — очки в «половинках», чтобы не было дробных ошибок
+  var ROWS = [
+    { key: 'bot', pts2: 1, r: 15, y: 206, xs: [352, 396, 440], move: 0 },
+    { key: 'mid', pts2: 2, r: 12, y: 153, xs: [374, 418], move: 0 },
+    { key: 'top', pts2: 6, r: 9,  y: 104, xs: [396], move: 20 }
+  ];
+
+  var cv = document.getElementById('game');
+  var ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  var el = function (id) { return document.getElementById(id); };
+  var scoreEl = el('score'), timeEl = el('time'), timeBox = el('timeBox');
+  var waterTxt = el('waterTxt'), waterBar = el('waterBar');
+  var startOv = el('startOv'), endOv = el('endOv');
+
+  // ---------- состояние ----------
+  var state = 'ready';            // ready | playing | over
+  var score2 = 0, timeLeft = ROUND_TIME, water = WATER_MAX;
+  var shotsFired = 0, hits = { bot: 0, mid: 0, top: 0 };
+  var cooldown = 0, recoil = 0, firing = false;
+  var streams = [], parts = [], pops = [], targets = [];
+  var aim = -0.2, pointer = { x: 320, y: 140, show: false };
+  var targetT = 0;
+  var best2 = 0;
+  try { best2 = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { best2 = 0; }
+
+  function fmt(p2) { return String(p2 / 2).replace('.', ','); }
+
+  function buildTargets() {
+    targets = [];
+    ROWS.forEach(function (row) {
+      row.xs.forEach(function (x) {
+        targets.push({ row: row, baseX: x, x: x, y: row.y, r: row.r, down: 0, anim: 0 });
+      });
+    });
+  }
+
+  function resetGame() {
+    score2 = 0; timeLeft = ROUND_TIME; water = WATER_MAX;
+    shotsFired = 0; hits = { bot: 0, mid: 0, top: 0 };
+    cooldown = 0; recoil = 0; firing = false; targetT = 0;
+    streams = []; parts = []; pops = [];
+    buildTargets();
+  }
+
+  function startGame() {
+    resetGame();                 // все таймеры — счётчики в состоянии, сбрасываются здесь
+    startOv.hidden = true;
+    endOv.hidden = true;
+    state = 'playing';
+    syncHud(true);
+  }
+
+  function endGame(reason) {
+    if (state !== 'playing') return;
+    state = 'over';
+    firing = false;
+    streams = [];                // летящие струи пропадают — очков после конца не будет
+    if (score2 > best2) {
+      best2 = score2;
+      try { localStorage.setItem(BEST_KEY, String(best2)); } catch (e) {}
+    }
+    var total = hits.bot + hits.mid + hits.top;
+    el('endTitle').textContent = reason === 'water' ? 'Вода кончилась!' : 'Время вышло!';
+    el('endScore').textContent = fmt(score2);
+    el('hTop').textContent = hits.top;
+    el('hMid').textContent = hits.mid;
+    el('hBot').textContent = hits.bot;
+    el('acc').textContent = (shotsFired ? Math.round(total / shotsFired * 100) : 0) + '%';
+    el('best').textContent = fmt(best2);
+    var pts = score2 / 2;
+    el('endRank').textContent =
+      pts >= 18 ? 'Король района' :
+      pts >= 10 ? 'Гроза тира' :
+      pts >= 5  ? 'Дворовый стрелок' : 'Мокрый новичок';
+    syncHud(true);
+    endOv.hidden = false;
+    el('againBtn').focus();
+  }
+
+  // ---------- стрельба ----------
+  function muzzlePos() {
+    var c = Math.cos(aim), s = Math.sin(aim);
+    return {
+      x: PIVOT.x + MUZZLE.x * c - MUZZLE.y * s,
+      y: PIVOT.y + MUZZLE.x * s + MUZZLE.y * c
+    };
+  }
+
+  function fire() {
+    if (state !== 'playing' || cooldown > 0 || water <= 0) return;
+    water--; shotsFired++; cooldown = FIRE_DELAY; recoil = 1;
+    var m = muzzlePos();
+    streams.push({ x: m.x, y: m.y, vx: Math.cos(aim) * SPEED, vy: Math.sin(aim) * SPEED });
+  }
+
+  function splash(x, y, n) {
+    for (var i = 0; i < n; i++) {
+      parts.push({
+        x: x, y: y,
+        vx: (Math.random() - 0.5) * 130,
+        vy: -Math.random() * 110 - 10,
+        life: 0.35 + Math.random() * 0.3
+      });
+    }
+  }
+
+  function hitTarget(tg) {
+    tg.down = RESPAWN;
+    score2 += tg.row.pts2;
+    hits[tg.row.key]++;
+    pops.push({ x: tg.x, y: tg.y - tg.r - 4, text: '+' + fmt(tg.row.pts2), life: 0.9 });
+    splash(tg.x, tg.y, 9);
+  }
+
+  // ---------- обновление ----------
+  function update(dt) {
+    var i, j, s, tg;
+
+    // частицы и всплывающие очки — чисто визуальные
+    for (i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.life -= dt; p.vy += 420 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.life <= 0) parts.splice(i, 1);
+    }
+    for (i = pops.length - 1; i >= 0; i--) {
+      pops[i].life -= dt; pops[i].y -= 22 * dt;
+      if (pops[i].life <= 0) pops.splice(i, 1);
+    }
+    recoil = Math.max(0, recoil - dt * 8);
+
+    if (state !== 'over') {
+      targetT += dt;
+      for (i = 0; i < targets.length; i++) {
+        tg = targets[i];
+        if (tg.row.move) tg.x = tg.baseX + Math.sin(targetT * 1.6) * tg.row.move;
+        if (tg.down > 0) tg.down -= dt;
+        var goal = tg.down > 0 ? 1 : 0;
+        tg.anim += (goal - tg.anim) * Math.min(1, dt * 14);
+      }
+    }
+
+    if (state !== 'playing') return;
+
+    timeLeft -= dt;
+    if (timeLeft <= 0) { timeLeft = 0; endGame('time'); return; }
+
+    cooldown -= dt;
+    if (firing) fire();
+
+    var STEPS = 2, h = dt / STEPS;
+    for (i = streams.length - 1; i >= 0; i--) {
+      s = streams[i];
+      var dead = false;
+      for (var k = 0; k < STEPS && !dead; k++) {
+        s.vy += GRAV * h; s.x += s.vx * h; s.y += s.vy * h;
+        for (j = 0; j < targets.length; j++) {
+          tg = targets[j];
+          if (tg.down > 0 || tg.anim > 0.35) continue;
+          var dx = s.x - tg.x, dy = s.y - tg.y, rr = tg.r + 1.5;
+          if (dx * dx + dy * dy <= rr * rr) { hitTarget(tg); dead = true; break; }
+        }
+        if (dead) break;
+        if (s.y >= GROUND_Y) { splash(s.x, GROUND_Y, 5); dead = true; }
+        else if (s.x >= 468) { splash(468, s.y, 5); dead = true; }
+        else if (s.x < -20 || s.y < -400) dead = true;
+      }
+      if (dead) streams.splice(i, 1);
+    }
+
+    if (water <= 0 && streams.length === 0) endGame('water');
+  }
+
+  // ---------- HUD ----------
+  var hudCache = { s: null, t: null, w: null };
+  function syncHud(force) {
+    var t = Math.ceil(timeLeft);
+    if (force || hudCache.s !== score2) { scoreEl.textContent = fmt(score2); hudCache.s = score2; }
+    if (force || hudCache.t !== t) {
+      timeEl.textContent = t; hudCache.t = t;
+      timeBox.className = 'box' + (t <= 10 && state === 'playing' ? ' low' : '');
+    }
+    if (force || hudCache.w !== water) {
+      waterTxt.textContent = water + '/' + WATER_MAX;
+      waterBar.style.width = (water / WATER_MAX * 100) + '%';
+      hudCache.w = water;
+    }
+  }
+
+  // ---------- рисование ----------
+  function R(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+  function C(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+
+  function drawBackground() {
+    var i;
+    R(0, 0, W, H, '#1f3a5f');
+    for (i = 0; i < W; i += 48) R(i, 0, 24, H, '#23426b');
+
+    // навес
+    for (i = 0; i * 24 < W; i++) {
+      var col = i % 2 ? '#f4ead2' : '#d8342c';
+      R(i * 24, 0, 24, 22, col);
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(i * 24 + 12, 22, 12, 0, Math.PI); ctx.fill();
+    }
+    R(0, 0, W, 3, '#0b1220');
+
+    // пол
+    R(0, GROUND_Y, W, H - GROUND_Y, '#8a5a2b');
+    R(0, GROUND_Y, W, 2, '#b57a3c');
+    for (i = 20; i < W; i += 44) R(i, GROUND_Y + 2, 1, H - GROUND_Y, '#6b431e');
+
+    // стенд с полками
+    R(326, 84, 142, GROUND_Y - 84, '#172c47');
+    R(326, 84, 142, 3, '#0f1f33');
+    R(326, 84, 3, GROUND_Y - 84, '#0f1f33');
+    R(465, 84, 3, GROUND_Y - 84, '#0f1f33');
+    // стойки
+    R(356, 173, 2, 52, '#4a2c12'); R(434, 173, 2, 52, '#4a2c12');
+    R(370, 121, 2, 48, '#4a2c12'); R(420, 121, 2, 48, '#4a2c12');
+    // полки
+    shelf(330, 225, 134); shelf(352, 169, 88); shelf(364, 117, 64);
+
+    // ценники
+    tag(309, 222, '0,5'); tag(338, 166, '1'); tag(350, 114, '3');
+  }
+  function shelf(x, y, w) {
+    R(x, y, w, 4, '#a86a32'); R(x, y, w, 1, '#d08d4b'); R(x, y + 4, w, 1, '#4a2c12');
+  }
+  function tag(x, y, text) {
+    var w = text.length > 1 ? 19 : 11;
+    R(x, y, w, 10, '#ffe14d'); R(x, y + 9, w, 1, '#b99a1c');
+    ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + w / 2, y + 5.5);
+  }
+
+  function drawTarget(tg) {
+    var x = Math.round(tg.x), base = tg.y + tg.r + 4;
+    ctx.save();
+    ctx.translate(x, base);
+    ctx.scale(1, Math.max(0.1, 1 - tg.anim * 0.9));
+    ctx.translate(-x, -base);
+    R(x - 1, tg.y + tg.r - 1, 3, 5, '#3a3a44');
+    C(x, tg.y, tg.r + 1, '#14171f');
+    C(x, tg.y, tg.r, '#e23a31');
+    C(x, tg.y, tg.r * 0.68, '#f7f1e1');
+    C(x, tg.y, tg.r * 0.36, '#e23a31');
+    ctx.restore();
+  }
+
+  function drawCounter() {
+    R(124, 198, 10, 40, '#6b3f1d');
+    R(126, 198, 2, 40, '#84501f');
+    R(120, 194, 18, 5, '#a86a32');
+    R(120, 194, 18, 1, '#d08d4b');
+  }
+
+  function drawPlayer() {
+    // кроссовки
+    R(60, 232, 15, 6, '#f2f2f2'); R(60, 236, 15, 2, '#c9c9c9'); R(64, 233, 5, 2, '#d8342c');
+    R(76, 232, 15, 6, '#f2f2f2'); R(76, 236, 15, 2, '#c9c9c9'); R(80, 233, 5, 2, '#d8342c');
+    // джинсы
+    R(62, 202, 10, 30, '#2f55a4'); R(76, 202, 10, 30, '#2a4a8f');
+    R(62, 228, 10, 2, '#24407c'); R(76, 228, 10, 2, '#24407c');
+    // капюшон сзади и худи
+    R(56, 141, 12, 12, '#2a2a33');
+    R(60, 144, 28, 60, '#3d3d4a');
+    R(60, 144, 5, 60, '#33333e');
+    R(60, 199, 28, 5, '#2a2a33');
+    R(70, 178, 14, 10, '#33333e');           // карман
+    R(77, 146, 2, 12, '#e8e8e8'); R(81, 146, 2, 9, '#e8e8e8'); // шнурки
+    // шея и голова
+    R(70, 138, 10, 7, '#dba278');
+    R(64, 116, 22, 24, '#f0b98a');
+    R(64, 116, 4, 24, '#e2a877');
+    R(66, 126, 3, 6, '#d6966a');             // ухо
+    R(86, 127, 3, 4, '#f0b98a');             // нос
+    R(76, 122, 7, 2, '#3a2416');             // хмурая бровь
+    R(77, 121, 3, 1, '#3a2416');
+    R(79, 125, 3, 3, '#1a1a1a');             // глаз
+    R(78, 134, 7, 2, '#7a3b2e');             // ухмылка
+    R(84, 133, 2, 1, '#7a3b2e');
+    R(70, 131, 6, 3, '#f7e9c8');             // пластырь
+    R(72, 131, 2, 3, '#e6d3a8');
+    // кепка козырьком назад
+    R(62, 107, 24, 10, '#d8342c');
+    R(65, 104, 19, 4, '#d8342c');
+    R(62, 115, 24, 2, '#a8231d');
+    R(51, 114, 13, 3, '#a8231d');            // козырёк смотрит назад
+    R(51, 113, 10, 1, '#d8342c');
+    R(81, 111, 5, 4, '#5a3a22');             // чёлка в вырезе застёжки
+    R(73, 103, 3, 2, '#f4ead2');             // пуговка
+  }
+
+  function drawArmAndGun() {
+    ctx.save();
+    ctx.translate(PIVOT.x, PIVOT.y);
+    ctx.rotate(aim);
+    ctx.translate(-recoil * 3, 0);
+    // рукав
+    R(-4, -5, 22, 10, '#3d3d4a');
+    R(-4, 3, 22, 2, '#33333e');
+    // рукоять
+    R(18, 0, 7, 11, '#2aa836');
+    R(18, 9, 7, 2, '#1d7a27');
+    // корпус пистолета
+    R(14, -10, 23, 9, '#3ecf4a');
+    R(14, -10, 23, 2, '#7be883');
+    R(14, -3, 23, 2, '#2aa836');
+    // бачок с водой
+    R(13, -17, 13, 7, '#a9f2b0');
+    R(15, -15, 9, 3, '#6fd6ff');
+    R(17, -19, 5, 2, '#ff4d2e');             // красная крышка
+    // ствол и красный носик
+    R(37, -8, 6, 5, '#3ecf4a');
+    R(43, -9, 4, 7, '#ff4d2e');
+    R(43, -9, 4, 2, '#ff8a70');
+    // курок и скоба
+    R(26, -1, 3, 5, '#ff4d2e');
+    R(25, 5, 7, 1, '#2aa836'); R(31, -1, 1, 6, '#2aa836');
+    // кисть
+    R(15, -3, 7, 8, '#f0b98a');
+    R(15, 3, 7, 2, '#dba278');
+    ctx.restore();
+  }
+
+  function drawStreams() {
+    ctx.lineCap = 'round';
+    for (var i = 0; i < streams.length; i++) {
+      var s = streams[i];
+      var v = Math.sqrt(s.vx * s.vx + s.vy * s.vy) || 1;
+      var nx = s.vx / v, ny = s.vy / v;
+      ctx.strokeStyle = '#2fa6ea'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(s.x - nx * 17, s.y - ny * 17); ctx.lineTo(s.x, s.y); ctx.stroke();
+      ctx.strokeStyle = '#6fd6ff'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(s.x - nx * 15, s.y - ny * 15); ctx.lineTo(s.x, s.y); ctx.stroke();
+      ctx.strokeStyle = '#d9f6ff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(s.x - nx * 5, s.y - ny * 5); ctx.lineTo(s.x, s.y); ctx.stroke();
+    }
+  }
+
+  function drawEffects() {
+    var i;
+    for (i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      R(Math.round(p.x), Math.round(p.y), 2, 2, p.life > 0.2 ? '#9fe3ff' : '#4fc3ff');
+    }
+    ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (i = 0; i < pops.length; i++) {
+      var q = pops[i];
+      ctx.globalAlpha = Math.min(1, q.life * 3);
+      ctx.fillStyle = '#14171f'; ctx.fillText(q.text, Math.round(q.x) + 1, Math.round(q.y) + 1);
+      ctx.fillStyle = '#ffe14d'; ctx.fillText(q.text, Math.round(q.x), Math.round(q.y));
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawAimHelpers() {
+    if (state !== 'playing') return;
+    var m = muzzlePos(), c = Math.cos(aim), s = Math.sin(aim);
+    for (var i = 1; i <= 4; i++) {
+      ctx.globalAlpha = 0.6 - i * 0.12;
+      R(Math.round(m.x + c * i * 11) - 1, Math.round(m.y + s * i * 11) - 1, 2, 2, '#ffffff');
+    }
+    ctx.globalAlpha = 1;
+    if (pointer.show) {
+      var x = Math.round(pointer.x), y = Math.round(pointer.y);
+      R(x - 6, y, 4, 1, '#fff'); R(x + 3, y, 4, 1, '#fff');
+      R(x, y - 6, 1, 4, '#fff'); R(x, y + 3, 1, 4, '#fff');
+    }
+  }
+
+  function draw() {
+    drawBackground();
+    for (var i = 0; i < targets.length; i++) drawTarget(targets[i]);
+    drawCounter();
+    drawPlayer();
+    drawArmAndGun();
+    drawStreams();
+    drawEffects();
+    drawAimHelpers();
+  }
+
+  // ---------- ввод: мышь и касание через Pointer Events ----------
+  function setAim(e) {
+    var rect = cv.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pointer.x = (e.clientX - rect.left) / rect.width * W;
+    pointer.y = (e.clientY - rect.top) / rect.height * H;
+    pointer.show = e.pointerType === 'mouse';
+    var a = Math.atan2(pointer.y - PIVOT.y, Math.max(1, pointer.x - PIVOT.x));
+    aim = Math.max(AIM_MIN, Math.min(AIM_MAX, a));
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    setAim(e);
+    if (state !== 'playing') return;
+    firing = true;
+    fire();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  cv.addEventListener('pointermove', function (e) { setAim(e); });
+  function stopFire() { firing = false; }
+  cv.addEventListener('pointerup', stopFire);
+  cv.addEventListener('pointercancel', stopFire);
+  cv.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') pointer.show = false; });
+  cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  window.addEventListener('blur', stopFire);
+  document.addEventListener('visibilitychange', stopFire);
+
+  el('startBtn').addEventListener('click', startGame);
+  el('againBtn').addEventListener('click', startGame);
+
+  // ---------- единственный игровой цикл ----------
+  var last = 0;
+  function frame(ts) {
+    var dt = last ? (ts - last) / 1000 : 0;
+    last = ts;
+    if (dt > 0.05) dt = 0.05;     // после сворачивания вкладки время не «проскакивает»
+    if (dt < 0) dt = 0;
+    update(dt);
+    syncHud(false);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resetGame();
+  syncHud(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
